@@ -32,8 +32,25 @@ func CORSMiddleware() gin.HandlerFunc {
 }
 
 func main() {
+	// --- [新增] 智能判断数据库路径 ---
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		// 如果环境变量未设置，检查是否在 Docker 环境 (/app/data 目录是否存在)
+		if _, err := os.Stat("/app/data"); !os.IsNotExist(err) {
+			// Docker 环境: 数据存放在挂载卷中
+			dbPath = "/app/data/lite-pam.db"
+			log.Println("Running in Docker mode, using database: /app/data/lite-pam.db")
+		} else {
+			// 本地开发环境: 数据存放在当前目录
+			dbPath = "lite-pam.db"
+			log.Println("Running in Local mode, using database: lite-pam.db")
+		}
+	} else {
+		log.Printf("Using custom database path from ENV: %s", dbPath)
+	}
+
 	// 1. 初始化数据库
-	if err := database.InitDB("lite-pam.db"); err != nil {
+	if err := database.InitDB(dbPath); err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 
@@ -133,25 +150,4 @@ func seedData() {
 		ContactInfo:  "root@localhost",
 	}
 	database.DB.Create(&superAdmin)
-
-	// 2. 网络组管理员
-	admin := database.User{
-		Username:       "admin_net",
-		PasswordHash:   pwdHash,
-		Role:           database.RoleAdmin,
-		ManagedGroupID: &netGroup.ID,
-		RealName:       "Network Manager",
-	}
-	database.DB.Create(&admin)
-
-	// 3. 普通运维
-	ops := database.User{
-		Username:     "ops_user",
-		PasswordHash: pwdHash,
-		Role:         database.RoleUser,
-		RealName:     "Operations Engineer",
-	}
-	database.DB.Create(&ops)
-	log.Println("Seeded: system_root(SUPER), admin_net(ADMIN), ops_user(USER)")
-}
 */
