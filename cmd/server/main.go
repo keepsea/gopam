@@ -11,6 +11,23 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// CORSMiddleware 允许跨域请求
+func CORSMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*") // 生产环境请改为前端域名
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-TOTP-Code")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
+	}
+}
+
 func main() {
 	if err := database.InitDB("lite-pam.db"); err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
@@ -19,12 +36,15 @@ func main() {
 	seedData()
 
 	r := gin.Default()
+
+	// --- 关键修改: 启用 CORS 中间件 ---
+	r.Use(CORSMiddleware())
+
 	r.POST("/api/login", handlers.Login)
 
 	api := r.Group("/api")
 	api.Use(middleware.AuthMiddleware())
 	{
-		// 基础
 		api.GET("/ping", func(c *gin.Context) {
 			c.JSON(200, gin.H{"pong": true})
 		})
@@ -33,8 +53,6 @@ func main() {
 		api.GET("/groups", handlers.ListGroups)
 		api.POST("/devices", handlers.CreateDevice)
 		api.GET("/devices", handlers.ListDevices)
-
-		// --- Step 7 新增: 密码重置 (回收) ---
 		api.POST("/devices/:id/reset", handlers.ResetPassword)
 
 		// 申请流程
@@ -44,8 +62,6 @@ func main() {
 		// 管理流程
 		api.GET("/admin/pending-requests", handlers.ListPendingRequests)
 		api.POST("/requests/:id/approve", handlers.ApproveRequest)
-
-		// --- Step 7 新增: 审计日志 ---
 		api.GET("/admin/audit-logs", handlers.ListAuditLogs)
 	}
 
