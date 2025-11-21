@@ -4,7 +4,8 @@ import (
 	"gopam/internal/api/handlers"
 	"gopam/internal/api/middleware"
 	"gopam/internal/database"
-	"gopam/internal/security"
+
+	//"gopam/internal/security"
 	"log"
 	"os"
 
@@ -17,7 +18,9 @@ func CORSMiddleware() gin.HandlerFunc {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*") // 生产环境请改为前端域名
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-TOTP-Code")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT")
+
+		// [关键修复] 确保包含 DELETE, PUT 等方法
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
 
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
@@ -34,8 +37,8 @@ func main() {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 
-	// 2. 数据播种
-	seedData()
+	// 2. 数据播种 (初始化超级管理员等)
+	//seedData()
 
 	// 3. 设置 Gin 路由
 	r := gin.Default()
@@ -50,29 +53,51 @@ func main() {
 	api := r.Group("/api")
 	api.Use(middleware.AuthMiddleware())
 	{
-		// 基础测试
+		// --- 基础测试 ---
 		api.GET("/ping", func(c *gin.Context) {
 			c.JSON(200, gin.H{"pong": true})
 		})
 
-		// 组与设备管理
+		// --- 金库管理 (Vault) ---
+		api.GET("/vault/status", handlers.CheckVaultStatus)
+		api.POST("/vault/setup", handlers.SetupVault)
+		api.POST("/vault/unlock", handlers.UnlockVault)
+		api.POST("/vault/lock", handlers.LockVault)
+
+		// --- 组管理 (超级管理员) ---
 		api.GET("/groups", handlers.ListGroups)
+		api.POST("/admin/groups", handlers.CreateGroup)
+		api.PUT("/admin/groups/:id", handlers.UpdateGroup)
+		api.DELETE("/admin/groups/:id", handlers.DeleteGroup)
+
+		// --- 设备管理 ---
 		api.POST("/devices", handlers.CreateDevice)
 		api.GET("/devices", handlers.ListDevices)
 		api.POST("/devices/:id/reset", handlers.ResetPassword)
 
-		// 申请流程
+		// --- 申请与借用流程 ---
 		api.POST("/requests", handlers.CreateRequest)
+		api.GET("/requests/my", handlers.ListMyRequests) // 我的申请列表
 		api.GET("/requests/:id/reveal", handlers.RevealPassword)
 
-		// 审批管理流程
+		// --- 审批与审计流程 ---
 		api.GET("/admin/pending-requests", handlers.ListPendingRequests)
 		api.POST("/requests/:id/approve", handlers.ApproveRequest)
 		api.GET("/admin/audit-logs", handlers.ListAuditLogs)
 
-		// --- 新增: MFA (TOTP) 设置接口 ---
+		// --- MFA (TOTP) 设置 ---
 		api.POST("/auth/totp/setup", handlers.SetupTOTP)       // 获取密钥和二维码
 		api.POST("/auth/totp/activate", handlers.ActivateTOTP) // 验证验证码并绑定
+
+		// --- 用户管理 (超级管理员) ---
+		api.GET("/admin/users", handlers.ListUsers)
+		api.POST("/admin/users", handlers.CreateUser)
+		api.PUT("/admin/users/:id", handlers.UpdateUser)
+		api.DELETE("/admin/users/:id", handlers.DeleteUser)
+		api.PUT("/admin/users/:id/password", handlers.AdminResetUserPassword)
+
+		// --- 个人设置 ---
+		api.PUT("/user/password", handlers.UpdateSelfPassword)
 	}
 
 	// 4. 启动服务
@@ -85,6 +110,7 @@ func main() {
 }
 
 // seedData 初始化演示数据
+/*
 func seedData() {
 	var count int64
 	database.DB.Model(&database.User{}).Count(&count)
@@ -97,18 +123,35 @@ func seedData() {
 	database.DB.Create(&netGroup)
 	database.DB.Create(&svrGroup)
 	pwdHash, _ := security.HashPassword("123456")
+
+	// 1. 超级管理员 (system_root)
+	superAdmin := database.User{
+		Username:     "system_root",
+		PasswordHash: pwdHash,
+		Role:         database.RoleSuperAdmin,
+		RealName:     "System Administrator",
+		ContactInfo:  "root@localhost",
+	}
+	database.DB.Create(&superAdmin)
+
+	// 2. 网络组管理员
 	admin := database.User{
 		Username:       "admin_net",
 		PasswordHash:   pwdHash,
 		Role:           database.RoleAdmin,
 		ManagedGroupID: &netGroup.ID,
+		RealName:       "Network Manager",
 	}
 	database.DB.Create(&admin)
+
+	// 3. 普通运维
 	ops := database.User{
 		Username:     "ops_user",
 		PasswordHash: pwdHash,
 		Role:         database.RoleUser,
+		RealName:     "Operations Engineer",
 	}
 	database.DB.Create(&ops)
-	log.Println("Seeded: [Groups: Network-Sec, Server-Ops], [Users: admin_net, ops_user (pass: 123456)]")
+	log.Println("Seeded: system_root(SUPER), admin_net(ADMIN), ops_user(USER)")
 }
+*/

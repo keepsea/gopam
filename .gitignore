@@ -1,0 +1,25 @@
+*.db
+*.db-shm
+*.db-wal
+lite-pam.db
+
+Key files or certificates (if any)
+
+*.pem
+*.key
+
+Environment variables
+
+.env
+
+--- IDEs ---
+
+.vscode/
+.idea/
+*.swp
+*.swo
+
+--- OS ---
+
+.DS_Store
+Thumbs.db

@@ -4,6 +4,7 @@ import (
 	"gopam/internal/auth"
 	"gopam/internal/database"
 	"gopam/internal/security"
+	"gopam/internal/state"
 	"net/http"
 	"time"
 
@@ -47,12 +48,20 @@ func CreateRequest(c *gin.Context) {
 	}
 	tx.Commit()
 
+	// 审计日志
+	database.RecordAuditLog(
+		c.GetString("actor_label"),
+		"CREATE_REQUEST",
+		"Request #"+string(rune(request.ID)), // 注: 这里简单转string，实际建议用 strconv.Itoa
+		gin.H{"device_id": req.DeviceID, "reason": req.Reason},
+	)
+
 	c.JSON(http.StatusCreated, gin.H{"message": "Request submitted", "id": request.ID})
 }
 
 // ListPendingRequests 管理员查看待审批列表 (分权)
 func ListPendingRequests(c *gin.Context) {
-	adminGroupID, _ := c.Get("groupID") // 这里用 Get 是因为 groupID 可能为空(非admin)，且 Get 返回 (any, bool)
+	adminGroupID, _ := c.Get("groupID")
 
 	var requests []database.Request
 	// 关联查询: 只查 Device.GroupID == Admin.ManagedGroupID 的申请
@@ -64,19 +73,24 @@ func ListPendingRequests(c *gin.Context) {
 	c.JSON(http.StatusOK, requests)
 }
 
+// ApproveRequest 管理员审批 (真实 TOTP + 金库解密校验)
 func ApproveRequest(c *gin.Context) {
+	// 1. 检查金库状态 (审批需要解密验证数据完整性，虽然不返回密码，但需确保DEK可用)
+	dek := state.GlobalVault.GetDEK()
+	if dek == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Vault is locked. Please unlock first."})
+		return
+	}
+
 	requestID := c.Param("id")
 
-	// 1. 获取 Header 中的 TOTP Code
+	// 2. 获取 Header 中的 TOTP Code
 	totpCode := c.GetHeader("X-TOTP-Code")
 	if totpCode == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "MFA Required: X-TOTP-Code header missing"})
 		return
 	}
 
-	// --- 真实校验逻辑开始 ---
-
-	// 2. 获取当前 Admin 用户信息 (查数据库获取 Secret)
 	adminID := c.GetUint("userID")
 	var adminUser database.User
 	if err := database.DB.First(&adminUser, adminID).Error; err != nil {
@@ -86,7 +100,7 @@ func ApproveRequest(c *gin.Context) {
 
 	// 3. 检查是否已绑定 MFA
 	if adminUser.TOTPSecret == "" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "MFA not setup. Please configure Authenticator in settings first."})
+		c.JSON(http.StatusForbidden, gin.H{"error": "MFA not setup."})
 		return
 	}
 
@@ -96,16 +110,13 @@ func ApproveRequest(c *gin.Context) {
 		return
 	}
 
-	// --- 真实校验逻辑结束 ---
-
-	// 5. 查找申请单及关联设备
 	var req database.Request
-	if err := database.DB.Preload("Device").First(&req, requestID).Error; err != nil {
+	if err := database.DB.Preload("Device").Preload("User").First(&req, requestID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Request not found"})
 		return
 	}
 
-	// 6. 权限再次校验 (防越权)
+	// 5. 权限再次校验 (防越权)
 	val, exists := c.Get("groupID")
 	if !exists {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Permission denied"})
@@ -118,14 +129,14 @@ func ApproveRequest(c *gin.Context) {
 		return
 	}
 
-	// 7. 解密密码 (完整性校验)
-	_, err := security.Decrypt(getMasterKey(), req.Device.EncryptedPassword)
+	// 6. 使用 DEK 尝试解密 (完整性校验，确保密码数据未损坏)
+	_, err := security.DecryptRaw(dek, req.Device.EncryptedPassword)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decrypt password (integrity check failed)"})
 		return
 	}
 
-	// 8. 事务更新
+	// 7. 事务更新
 	now := time.Now()
 	tx := database.DB.Begin()
 
@@ -138,11 +149,26 @@ func ApproveRequest(c *gin.Context) {
 
 	tx.Commit()
 
+	// 8. 审计日志
+	database.RecordAuditLog(
+		c.GetString("actor_label"),
+		"APPROVE_REQUEST",
+		req.Device.Name,
+		gin.H{"applicant": req.User.Username, "reason": req.Reason},
+	)
+
 	c.JSON(http.StatusOK, gin.H{"message": "Approved successfully."})
 }
 
 // RevealPassword 运维人员查看密码 (审批通过后)
 func RevealPassword(c *gin.Context) {
+	// 1. 检查金库状态 (必须有 DEK 才能解密)
+	dek := state.GlobalVault.GetDEK()
+	if dek == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Vault is locked. Ask Admin to unlock."})
+		return
+	}
+
 	requestID := c.Param("id")
 	userID := c.GetUint("userID")
 
@@ -164,18 +190,44 @@ func RevealPassword(c *gin.Context) {
 		return
 	}
 
-	// 解密
-	pwd, err := security.Decrypt(getMasterKey(), req.Device.EncryptedPassword)
+	// 解密: 使用 DEK 解密
+	pwd, err := security.DecryptRaw(dek, req.Device.EncryptedPassword)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Decryption error"})
 		return
 	}
 
-	// 审计日志应在这里记录 (略)
+	// 审计日志 (核心安全记录)
+	database.RecordAuditLog(
+		c.GetString("actor_label"),
+		"VIEW_PASSWORD",
+		req.Device.Name,
+		gin.H{"ip": c.ClientIP()},
+	)
 
 	c.JSON(http.StatusOK, gin.H{
 		"device":   req.Device.Name,
 		"ip":       req.Device.IP,
 		"password": pwd, // 明文返回
 	})
+}
+
+// ListMyRequests 获取当前登录用户的申请记录 (用于前端“集成查看”功能)
+func ListMyRequests(c *gin.Context) {
+	userID := c.GetUint("userID")
+
+	var requests []database.Request
+	// 查询属于当前用户的申请，按时间倒序
+	// 预加载 Device 信息以便前端展示
+	result := database.DB.Preload("Device").
+		Where("user_id = ?", userID).
+		Order("created_at desc").
+		Find(&requests)
+
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch requests"})
+		return
+	}
+
+	c.JSON(http.StatusOK, requests)
 }

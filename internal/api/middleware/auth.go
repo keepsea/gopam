@@ -16,7 +16,6 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// 格式: "Bearer <token>"
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || parts[0] != "Bearer" {
 			c.AbortWithStatusJSON(401, gin.H{"error": "Invalid authorization header format"})
@@ -29,12 +28,21 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// 将用户信息存入 Context，供后续 Handler 使用
+		// 注入基础信息
 		c.Set("userID", claims.UserID)
+		c.Set("username", claims.Username)
 		c.Set("role", claims.Role)
 		if claims.ManagedGroupID != nil {
 			c.Set("groupID", *claims.ManagedGroupID)
 		}
+
+		// [新增] 构建审计专用的显示名称 (格式: 真实姓名 (账号))
+		// 如果没有真实姓名，则只显示账号
+		actorLabel := claims.Username
+		if claims.RealName != "" {
+			actorLabel = claims.RealName + " (" + claims.Username + ")"
+		}
+		c.Set("actor_label", actorLabel)
 
 		c.Next()
 	}

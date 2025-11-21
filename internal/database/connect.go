@@ -26,7 +26,9 @@ func InitDB(dbPath string) error {
 	DB.Exec("PRAGMA foreign_keys = ON")
 
 	// 自动迁移: 根据 Struct 创建/更新表结构
+	// [修复] 必须将 SystemConfig 加入列表，否则不会创建表
 	err = DB.AutoMigrate(
+		&SystemConfig{}, // [新增]
 		&DeviceGroup{},
 		&User{},
 		&Device{},

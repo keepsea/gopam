@@ -13,14 +13,15 @@ type DeviceStatus string
 type RequestStatus string
 
 const (
-	RoleAdmin UserRole = "ADMIN" // 组管理员
-	RoleUser  UserRole = "USER"  // 运维人员
+	RoleSuperAdmin UserRole = "SUPER_ADMIN" // [新增] 超级管理员：管人、管组
+	RoleAdmin      UserRole = "ADMIN"       // 组管理员：管设备、审批
+	RoleUser       UserRole = "USER"        // 运维人员：申请、使用
 
-	StatusSafe            DeviceStatus = "SAFE"             // 在库安全
-	StatusPendingApproval DeviceStatus = "PENDING_APPROVAL" // 待审批
-	StatusApproved        DeviceStatus = "APPROVED"         // 待领取
-	StatusInUse           DeviceStatus = "IN_USE"           // 使用中
-	StatusPendingReset    DeviceStatus = "PENDING_RESET"    // 待重置
+	StatusSafe            DeviceStatus = "SAFE"
+	StatusPendingApproval DeviceStatus = "PENDING_APPROVAL"
+	StatusApproved        DeviceStatus = "APPROVED"
+	StatusInUse           DeviceStatus = "IN_USE"
+	StatusPendingReset    DeviceStatus = "PENDING_RESET"
 
 	ReqStatusPending   RequestStatus = "PENDING"
 	ReqStatusApproved  RequestStatus = "APPROVED"
@@ -30,15 +31,21 @@ const (
 
 // --- Models ---
 
-// DeviceGroup 设备组 (管理边界)
+// [新增] 系统配置表 (存储加密后的主密钥)
+type SystemConfig struct {
+	ConfigKey    string `gorm:"primaryKey"` // 固定值: "MASTER_DEK"
+	EncryptedDEK string `gorm:"not null"`   // 被口令加密后的 Data Encryption Key
+	Salt         string `gorm:"not null"`   // PBKDF2 盐值
+	UpdatedAt    time.Time
+}
+
+// DeviceGroup 设备组
 type DeviceGroup struct {
 	gorm.Model
 	Name        string `gorm:"uniqueIndex;not null"`
 	Description string
-	// 关联: 一个组有多个设备
-	Devices []Device `gorm:"foreignKey:GroupID"`
-	// 关联: 一个组可能有多个管理员
-	Admins []User `gorm:"foreignKey:ManagedGroupID"`
+	Devices     []Device `gorm:"foreignKey:GroupID"`
+	Admins      []User   `gorm:"foreignKey:ManagedGroupID"`
 }
 
 // User 用户表
@@ -47,27 +54,30 @@ type User struct {
 	Username     string   `gorm:"uniqueIndex;not null"`
 	PasswordHash string   `gorm:"not null"`
 	Role         UserRole `gorm:"default:'USER'"`
-	TOTPSecret   string   // 仅 Admin 需要
 
-	// RBAC/Scope: 如果是 Admin，他管理哪个组？
-	ManagedGroupID *uint        // Pointer 允许为 null (User 角色没有此字段)
+	// [新增] 实名与联系方式
+	RealName    string
+	ContactInfo string
+
+	TOTPSecret string
+
+	// RBAC/Scope
+	ManagedGroupID *uint
 	ManagedGroup   *DeviceGroup `gorm:"foreignKey:ManagedGroupID"`
 }
 
 // Device 设备资产表
 type Device struct {
 	gorm.Model
-	Name              string       `gorm:"not null"`
-	IP                string       `gorm:"not null"`
-	Protocol          string       // SSH, RDP, etc.
+	Name              string `gorm:"not null"`
+	IP                string `gorm:"not null"`
+	Protocol          string
 	Status            DeviceStatus `gorm:"default:'SAFE'"`
-	EncryptedPassword string       `gorm:"not null"` // AES-256 Base64
+	EncryptedPassword string       `gorm:"not null"`
 
-	// 归属哪个组 (决定谁能审批)
 	GroupID uint
 	Group   DeviceGroup `gorm:"foreignKey:GroupID"`
 
-	// 谁录入的
 	CreatedByID uint
 	CreatedBy   User `gorm:"foreignKey:CreatedByID"`
 }
@@ -81,7 +91,6 @@ type Request struct {
 	UserID uint
 	User   User `gorm:"foreignKey:UserID"`
 
-	// 实际审批人 (必须是该 Device Group 的 Admin)
 	ApproverID *uint
 	Approver   *User `gorm:"foreignKey:ApproverID"`
 
@@ -94,8 +103,8 @@ type Request struct {
 // AuditLog 审计日志
 type AuditLog struct {
 	gorm.Model
-	ActorName string // 冗余存储用户名，防删除
-	Action    string // LOGIN, APPLY, APPROVE...
-	Target    string // 目标对象名称
-	Details   string // JSON 格式详情
+	ActorName string
+	Action    string
+	Target    string
+	Details   string
 }

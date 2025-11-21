@@ -8,14 +8,15 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// 系统 JWT 签名密钥 (生产环境应从环境变量读取)
+// 系统 JWT 签名密钥
 var jwtSecret = []byte("system-jwt-secret-key-change-me")
 
 type Claims struct {
 	UserID         uint   `json:"uid"`
 	Username       string `json:"sub"`
+	RealName       string `json:"name"` // [新增] 真实姓名
 	Role           string `json:"role"`
-	ManagedGroupID *uint  `json:"gid,omitempty"` // Admin 的管辖范围
+	ManagedGroupID *uint  `json:"gid,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -26,6 +27,7 @@ func GenerateToken(user database.User) (string, error) {
 	claims := &Claims{
 		UserID:         user.ID,
 		Username:       user.Username,
+		RealName:       user.RealName, // [新增] 注入真实姓名
 		Role:           string(user.Role),
 		ManagedGroupID: user.ManagedGroupID,
 		RegisteredClaims: jwt.RegisteredClaims{
