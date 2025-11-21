@@ -29,27 +29,33 @@ func CORSMiddleware() gin.HandlerFunc {
 }
 
 func main() {
+	// 1. 初始化数据库
 	if err := database.InitDB("lite-pam.db"); err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 
+	// 2. 数据播种
 	seedData()
 
+	// 3. 设置 Gin 路由
 	r := gin.Default()
 
-	// --- 关键修改: 启用 CORS 中间件 ---
+	// 启用 CORS 中间件
 	r.Use(CORSMiddleware())
 
+	// 公开路由
 	r.POST("/api/login", handlers.Login)
 
+	// 受保护路由 (需要 Authorization: Bearer <token>)
 	api := r.Group("/api")
 	api.Use(middleware.AuthMiddleware())
 	{
+		// 基础测试
 		api.GET("/ping", func(c *gin.Context) {
 			c.JSON(200, gin.H{"pong": true})
 		})
 
-		// 组与设备
+		// 组与设备管理
 		api.GET("/groups", handlers.ListGroups)
 		api.POST("/devices", handlers.CreateDevice)
 		api.GET("/devices", handlers.ListDevices)
@@ -59,12 +65,17 @@ func main() {
 		api.POST("/requests", handlers.CreateRequest)
 		api.GET("/requests/:id/reveal", handlers.RevealPassword)
 
-		// 管理流程
+		// 审批管理流程
 		api.GET("/admin/pending-requests", handlers.ListPendingRequests)
 		api.POST("/requests/:id/approve", handlers.ApproveRequest)
 		api.GET("/admin/audit-logs", handlers.ListAuditLogs)
+
+		// --- 新增: MFA (TOTP) 设置接口 ---
+		api.POST("/auth/totp/setup", handlers.SetupTOTP)       // 获取密钥和二维码
+		api.POST("/auth/totp/activate", handlers.ActivateTOTP) // 验证验证码并绑定
 	}
 
+	// 4. 启动服务
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -73,6 +84,7 @@ func main() {
 	r.Run(":" + port)
 }
 
+// seedData 初始化演示数据
 func seedData() {
 	var count int64
 	database.DB.Model(&database.User{}).Count(&count)

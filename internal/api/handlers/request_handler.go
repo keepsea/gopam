@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"gopam/internal/auth"
 	"gopam/internal/database"
 	"gopam/internal/security"
 	"net/http"
@@ -63,7 +64,6 @@ func ListPendingRequests(c *gin.Context) {
 	c.JSON(http.StatusOK, requests)
 }
 
-// ApproveRequest 管理员审批 (TOTP 验证 + 解密)
 func ApproveRequest(c *gin.Context) {
 	requestID := c.Param("id")
 
@@ -74,40 +74,58 @@ func ApproveRequest(c *gin.Context) {
 		return
 	}
 
-	// 2. 验证 TOTP (为了演示，我们这里使用硬编码的 Secret)
-	// 真实逻辑应为: valid := auth.ValidateTOTP(totpCode, currentUser.TOTPSecret)
+	// --- 真实校验逻辑开始 ---
 
-	if len(totpCode) != 6 {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Invalid TOTP format"})
+	// 2. 获取当前 Admin 用户信息 (查数据库获取 Secret)
+	adminID := c.GetUint("userID")
+	var adminUser database.User
+	if err := database.DB.First(&adminUser, adminID).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Admin user not found"})
 		return
 	}
-	// 模拟通过...
 
-	// 3. 查找申请单及关联设备
+	// 3. 检查是否已绑定 MFA
+	if adminUser.TOTPSecret == "" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "MFA not setup. Please configure Authenticator in settings first."})
+		return
+	}
+
+	// 4. 执行 TOTP 校验
+	if !auth.ValidateTOTP(totpCode, adminUser.TOTPSecret) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Invalid TOTP code"})
+		return
+	}
+
+	// --- 真实校验逻辑结束 ---
+
+	// 5. 查找申请单及关联设备
 	var req database.Request
 	if err := database.DB.Preload("Device").First(&req, requestID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Request not found"})
 		return
 	}
 
-	// 4. 权限再次校验 (防越权)
-	// 修复点 1: c.GetUint 只返回一个值，不能用 a, b := ...
-	adminGroupID := c.GetUint("groupID")
+	// 6. 权限再次校验 (防越权)
+	val, exists := c.Get("groupID")
+	if !exists {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Permission denied"})
+		return
+	}
+	adminGroupID := val.(uint)
+
 	if req.Device.GroupID != adminGroupID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "You do not have permission to approve this device"})
 		return
 	}
 
-	// 5. 解密密码 (完整性校验)
-	// 修复点 2: 使用 _ 忽略未使用的变量，避免编译错误
-	adminID := c.GetUint("userID")
+	// 7. 解密密码 (完整性校验)
 	_, err := security.Decrypt(getMasterKey(), req.Device.EncryptedPassword)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decrypt password (integrity check failed)"})
 		return
 	}
 
-	// 6. 事务更新: 申请单状态 -> Approved, 设备状态 -> Approved, 记录审批人
+	// 8. 事务更新
 	now := time.Now()
 	tx := database.DB.Begin()
 
@@ -120,8 +138,7 @@ func ApproveRequest(c *gin.Context) {
 
 	tx.Commit()
 
-	// 7. 返回成功信息
-	c.JSON(http.StatusOK, gin.H{"message": "Approved successfully. User can now retrieve the password."})
+	c.JSON(http.StatusOK, gin.H{"message": "Approved successfully."})
 }
 
 // RevealPassword 运维人员查看密码 (审批通过后)
