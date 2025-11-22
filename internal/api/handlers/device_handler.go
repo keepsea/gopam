@@ -70,7 +70,8 @@ func CreateDevice(c *gin.Context) {
 	}
 
 	// 4. 记录审计日志
-	database.RecordAuditLog(c.GetString("actor_label"), "CREATE_DEVICE", device.Name, gin.H{"ip": device.IP})
+	// [修改] 传入 GroupID
+	database.RecordAuditLog(c.GetString("actor_label"), "CREATE_DEVICE", device.Name, gin.H{"ip": device.IP}, &device.GroupID)
 	c.JSON(http.StatusCreated, gin.H{"message": "Device onboarded and secured", "id": device.ID})
 }
 
@@ -171,11 +172,13 @@ func ResetPassword(c *gin.Context) {
 	tx.Commit()
 
 	// 6. 记录审计日志
+	// [修改] 传入 GroupID
 	database.RecordAuditLog(
 		c.GetString("actor_label"),
 		"RESET_PASSWORD",
 		device.Name,
 		gin.H{"status_before": "IN_USE/PENDING", "status_after": "SAFE", "action": "Session Terminated"},
+		&device.GroupID,
 	)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Password rotated and all active sessions terminated"})

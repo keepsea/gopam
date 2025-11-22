@@ -51,7 +51,7 @@ func ActivateTOTP(c *gin.Context) {
 	}
 
 	// [修改] 使用 actor_label 记录姓名
-	database.RecordAuditLog(c.GetString("actor_label"), "ACTIVATE_MFA", "Self", nil)
+	database.RecordAuditLog(c.GetString("actor_label"), "ACTIVATE_MFA", "Self", nil, nil)
 
 	c.JSON(http.StatusOK, gin.H{"message": "MFA activated successfully"})
 }

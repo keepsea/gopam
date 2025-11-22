@@ -92,7 +92,7 @@ func SetupVault(c *gin.Context) {
 	// 初始化后默认解锁 30 分钟
 	state.GlobalVault.Unlock(dek, 30*time.Minute)
 
-	database.RecordAuditLog(c.GetString("actor_label"), "SETUP_VAULT", "System", nil)
+	database.RecordAuditLog(c.GetString("actor_label"), "SETUP_VAULT", "System", nil, nil)
 	c.JSON(http.StatusOK, gin.H{"message": "Vault initialized and unlocked"})
 }
 
@@ -137,7 +137,7 @@ func UnlockVault(c *gin.Context) {
 	// 5. 存入内存 (优化：有效期延长至 12 小时，方便一天的工作)
 	state.GlobalVault.Unlock(dek, 12*time.Hour)
 
-	database.RecordAuditLog(c.GetString("actor_label"), "UNLOCK_VAULT", "System", nil)
+	database.RecordAuditLog(c.GetString("actor_label"), "UNLOCK_VAULT", "System", nil, nil)
 	c.JSON(http.StatusOK, gin.H{"message": "Vault unlocked for 12 hours"})
 }
 
@@ -151,6 +151,6 @@ func LockVault(c *gin.Context) {
 	}
 
 	state.GlobalVault.Lock()
-	database.RecordAuditLog(c.GetString("actor_label"), "LOCK_VAULT", "System", nil)
+	database.RecordAuditLog(c.GetString("actor_label"), "LOCK_VAULT", "System", nil, nil)
 	c.JSON(http.StatusOK, gin.H{"message": "Vault locked"})
 }

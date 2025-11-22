@@ -107,4 +107,5 @@ type AuditLog struct {
 	Action    string
 	Target    string
 	Details   string
+	GroupID   *uint `gorm:"index"` // 新增: 用于权限隔离，可为空(系统级日志)
 }

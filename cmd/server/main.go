@@ -4,6 +4,7 @@ import (
 	"gopam/internal/api/handlers"
 	"gopam/internal/api/middleware"
 	"gopam/internal/database"
+	"gopam/internal/security"
 
 	//"gopam/internal/security"
 	"log"
@@ -38,12 +39,12 @@ func main() {
 		// 如果环境变量未设置，检查是否在 Docker 环境 (/app/data 目录是否存在)
 		if _, err := os.Stat("/app/data"); !os.IsNotExist(err) {
 			// Docker 环境: 数据存放在挂载卷中
-			dbPath = "/app/data/lite-pam.db"
-			log.Println("Running in Docker mode, using database: /app/data/lite-pam.db")
+			dbPath = "/app/data/gopam.db"
+			log.Println("Running in Docker mode, using database: /app/data/gopam.db")
 		} else {
 			// 本地开发环境: 数据存放在当前目录
-			dbPath = "lite-pam.db"
-			log.Println("Running in Local mode, using database: lite-pam.db")
+			dbPath = "gopam.db"
+			log.Println("Running in Local mode, using database: gopam.db")
 		}
 	} else {
 		log.Printf("Using custom database path from ENV: %s", dbPath)
@@ -126,8 +127,7 @@ func main() {
 	r.Run(":" + port)
 }
 
-// seedData 初始化演示数据
-/*
+// seedData 初始化数据
 func seedData() {
 	var count int64
 	database.DB.Model(&database.User{}).Count(&count)
@@ -150,4 +150,4 @@ func seedData() {
 		ContactInfo:  "root@localhost",
 	}
 	database.DB.Create(&superAdmin)
-*/
+}

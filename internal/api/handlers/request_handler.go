@@ -25,6 +25,13 @@ func CreateRequest(c *gin.Context) {
 
 	userID := c.GetUint("userID")
 
+	// [新增] 需要查询 Device 对应的 GroupID 用于记录日志
+	var device database.Device
+	if err := database.DB.First(&device, req.DeviceID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Device not found"})
+		return
+	}
+
 	// 创建申请记录
 	request := database.Request{
 		DeviceID: req.DeviceID,
@@ -49,11 +56,13 @@ func CreateRequest(c *gin.Context) {
 	tx.Commit()
 
 	// 审计日志
+	// [修改] 传入 GroupID
 	database.RecordAuditLog(
 		c.GetString("actor_label"),
 		"CREATE_REQUEST",
-		"Request #"+string(rune(request.ID)), // 注: 这里简单转string，实际建议用 strconv.Itoa
+		"Request #"+string(rune(request.ID)),
 		gin.H{"device_id": req.DeviceID, "reason": req.Reason},
+		&device.GroupID,
 	)
 
 	c.JSON(http.StatusCreated, gin.H{"message": "Request submitted", "id": request.ID})
@@ -150,11 +159,13 @@ func ApproveRequest(c *gin.Context) {
 	tx.Commit()
 
 	// 8. 审计日志
+	// [修改] 传入 GroupID
 	database.RecordAuditLog(
 		c.GetString("actor_label"),
 		"APPROVE_REQUEST",
 		req.Device.Name,
 		gin.H{"applicant": req.User.Username, "reason": req.Reason},
+		&req.Device.GroupID,
 	)
 
 	c.JSON(http.StatusOK, gin.H{"message": "Approved successfully."})
@@ -198,11 +209,13 @@ func RevealPassword(c *gin.Context) {
 	}
 
 	// 审计日志 (核心安全记录)
+	// [修改] 传入 GroupID
 	database.RecordAuditLog(
 		c.GetString("actor_label"),
 		"VIEW_PASSWORD",
 		req.Device.Name,
 		gin.H{"ip": c.ClientIP()},
+		&req.Device.GroupID,
 	)
 
 	c.JSON(http.StatusOK, gin.H{

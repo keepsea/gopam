@@ -1,7 +1,7 @@
 *.db
 *.db-shm
 *.db-wal
-lite-pam.db
+gopam.db
 
 Key files or certificates (if any)
 

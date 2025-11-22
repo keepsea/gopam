@@ -56,7 +56,7 @@ func CreateGroup(c *gin.Context) {
 		return
 	}
 
-	database.RecordAuditLog(c.GetString("actor_label"), "CREATE_GROUP", group.Name, nil)
+	database.RecordAuditLog(c.GetString("actor_label"), "CREATE_GROUP", group.Name, nil, nil)
 	c.JSON(http.StatusCreated, gin.H{"message": "Group created successfully", "id": group.ID})
 }
 
@@ -84,7 +84,7 @@ func UpdateGroup(c *gin.Context) {
 		return
 	}
 
-	database.RecordAuditLog(c.GetString("actor_label"), "UPDATE_GROUP", req.Name, nil)
+	database.RecordAuditLog(c.GetString("actor_label"), "UPDATE_GROUP", req.Name, nil, nil)
 	c.JSON(http.StatusOK, gin.H{"message": "Group updated successfully"})
 }
 
@@ -117,6 +117,6 @@ func DeleteGroup(c *gin.Context) {
 		return
 	}
 
-	database.RecordAuditLog(c.GetString("actor_label"), "DELETE_GROUP", "GroupID:"+id, nil)
+	database.RecordAuditLog(c.GetString("actor_label"), "DELETE_GROUP", "GroupID:"+id, nil, nil)
 	c.JSON(http.StatusOK, gin.H{"message": "Group deleted successfully"})
 }

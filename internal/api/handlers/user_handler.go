@@ -95,7 +95,7 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 
-	database.RecordAuditLog(c.GetString("actor_label"), "CREATE_USER", user.Username, nil)
+	database.RecordAuditLog(c.GetString("actor_label"), "CREATE_USER", user.Username, nil, nil)
 	c.JSON(http.StatusCreated, gin.H{"message": "User created successfully", "id": user.ID})
 }
 
@@ -128,7 +128,7 @@ func UpdateUser(c *gin.Context) {
 		return
 	}
 
-	database.RecordAuditLog(c.GetString("actor_label"), "UPDATE_USER", "UserID:"+targetID, nil)
+	database.RecordAuditLog(c.GetString("actor_label"), "UPDATE_USER", "UserID:"+targetID, nil, nil)
 	c.JSON(http.StatusOK, gin.H{"message": "User updated successfully"})
 }
 
@@ -153,7 +153,7 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	database.RecordAuditLog(c.GetString("actor_label"), "DELETE_USER", "UserID:"+targetID, nil)
+	database.RecordAuditLog(c.GetString("actor_label"), "DELETE_USER", "UserID:"+targetID, nil, nil)
 	c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
 }
 
@@ -182,7 +182,7 @@ func AdminResetUserPassword(c *gin.Context) {
 		return
 	}
 
-	database.RecordAuditLog(c.GetString("actor_label"), "ADMIN_RESET_USER_PWD", "UserID:"+targetID, nil)
+	database.RecordAuditLog(c.GetString("actor_label"), "ADMIN_RESET_USER_PWD", "UserID:"+targetID, nil, nil)
 	c.JSON(http.StatusOK, gin.H{"message": "Password reset successfully"})
 }
 
@@ -222,6 +222,6 @@ func UpdateSelfPassword(c *gin.Context) {
 		return
 	}
 
-	database.RecordAuditLog(c.GetString("actor_label"), "UPDATE_SELF_PWD", "Self", nil)
+	database.RecordAuditLog(c.GetString("actor_label"), "UPDATE_SELF_PWD", "Self", nil, nil)
 	c.JSON(http.StatusOK, gin.H{"message": "Password updated successfully"})
 }
