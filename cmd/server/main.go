@@ -56,7 +56,7 @@ func main() {
 	}
 
 	// 2. 数据播种 (初始化超级管理员等)
-	//seedData()
+	seedData()
 
 	// 3. 设置 Gin 路由
 	r := gin.Default()
@@ -113,6 +113,7 @@ func main() {
 		api.PUT("/admin/users/:id", handlers.UpdateUser)
 		api.DELETE("/admin/users/:id", handlers.DeleteUser)
 		api.PUT("/admin/users/:id/password", handlers.AdminResetUserPassword)
+		api.PUT("/admin/users/:id/reset-mfa", handlers.AdminResetUserMFA)
 
 		// --- 个人设置 ---
 		api.PUT("/user/password", handlers.UpdateSelfPassword)

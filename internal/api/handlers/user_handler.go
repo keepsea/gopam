@@ -22,6 +22,25 @@ func checkSuperAdmin(c *gin.Context) bool {
 
 // --- 接口实现 ---
 
+// [新增] 超管重置用户 MFA
+func AdminResetUserMFA(c *gin.Context) {
+	if !checkSuperAdmin(c) {
+		return
+	}
+	targetID := c.Param("id")
+
+	// 清空 secret 字段
+	if err := database.DB.Model(&database.User{}).Where("id = ?", targetID).Update("totp_secret", "").Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reset MFA"})
+		return
+	}
+
+	// 审计: 第4、5个参数分别为 details=nil, groupID=nil
+	database.RecordAuditLog(c.GetString("actor_label"), "ADMIN_RESET_MFA", "UserID:"+targetID, nil, nil)
+
+	c.JSON(http.StatusOK, gin.H{"message": "MFA reset successfully"})
+}
+
 // ListUsers 获取用户列表
 func ListUsers(c *gin.Context) {
 	if !checkSuperAdmin(c) {
